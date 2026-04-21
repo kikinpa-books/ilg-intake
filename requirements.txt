@@ -1,0 +1,4 @@
+flask
+gunicorn
+pypdf>=4.0
+reportlab
