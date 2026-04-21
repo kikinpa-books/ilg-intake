@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ILG Client Intake</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f9;
+      color: #1a1a2e;
+      padding: 32px 16px;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    header .logo-box {
+      background: #003087;
+      color: white;
+      font-weight: 800;
+      font-size: 22px;
+      letter-spacing: 2px;
+      padding: 10px 16px;
+      border-radius: 4px;
+    }
+
+    header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #003087;
+    }
+
+    header p {
+      font-size: 13px;
+      color: #666;
+      margin-top: 2px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #003087;
+      margin-bottom: 18px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e8edf5;
+    }
+
+    .field-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .field-row .field { flex: 1; }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    label .required { color: #c0392b; margin-left: 2px; }
+
+    input[type="text"],
+    input[type="date"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d0d7e2;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #1a1a2e;
+      background: #fafbfc;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #003087;
+      box-shadow: 0 0 0 3px rgba(0,48,135,0.1);
+      background: white;
+    }
+
+    input.error { border-color: #c0392b; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #003087;
+      cursor: pointer;
+    }
+
+    .toggle-row span {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .collapsible {
+      display: none;
+    }
+
+    .collapsible.visible {
+      display: block;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #003087;
+      color: white;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: background 0.15s;
+    }
+
+    .submit-btn:hover { background: #002060; }
+    .submit-btn:active { background: #001540; }
+
+    .error-msg {
+      display: none;
+      background: #fdf0ed;
+      border: 1px solid #f5c6bb;
+      color: #c0392b;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .success-msg {
+      display: none;
+      background: #edfaf3;
+      border: 1px solid #a8dfc5;
+      color: #1a7a4a;
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: #888;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="logo-box">ILG</div>
+    <div>
+      <h1>Client Intake Form</h1>
+      <p>Insurance Litigation Group, P.A. &amp; The Professional Law Group, PLLC</p>
+    </div>
+  </header>
+
+  <div id="errorBanner" class="error-msg"></div>
+  <div id="successBanner" class="success-msg"></div>
+
+  <form id="intakeForm" novalidate>
+
+    <!-- CLIENT INFO -->
+    <div class="card">
+      <div class="card-title">Client Information</div>
+
+      <div class="field">
+        <label>Client 1 Full Name <span class="required">*</span></label>
+        <input type="text" id="client1_name" placeholder="e.g. Jane Doe" autocomplete="name">
+      </div>
+
+      <label class="toggle-row" for="hasClient2Toggle">
+        <input type="checkbox" id="hasClient2Toggle">
+        <span>Add a second client / co-insured</span>
+      </label>
+
+      <div id="client2Section" class="collapsible">
+        <div class="field">
+          <label>Client 2 Full Name</label>
+          <input type="text" id="client2_name" placeholder="e.g. John Doe" autocomplete="name">
+        </div>
+      </div>
+    </div>
+
+    <!-- PROPERTY & LOSS -->
+    <div class="card">
+      <div class="card-title">Property &amp; Loss</div>
+
+      <div class="field">
+        <label>Property Address <span class="required">*</span></label>
+        <input type="text" id="property_address" placeholder="e.g. 123 Main St, Miami, FL 33101">
+      </div>
+
+      <div class="field">
+        <label>Date of Loss <span class="required">*</span></label>
+        <input type="date" id="date_of_loss">
+        <p class="hint">Enter the date the incident or damage occurred.</p>
+      </div>
+    </div>
+
+    <!-- INSURANCE -->
+    <div class="card">
+      <div class="card-title">Insurance</div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Insurance Company <span class="required">*</span></label>
+          <input type="text" id="insurance_company" placeholder="e.g. Citizens Property Insurance">
+        </div>
+        <div class="field">
+          <label>Policy Number <span class="required">*</span></label>
+          <input type="text" id="policy_number" placeholder="e.g. CPZ1234567">
+        </div>
+      </div>
+    </div>
+
+    <!-- MORTGAGE -->
+    <div class="card">
+      <div class="card-title">Mortgage</div>
+
+      <label class="toggle-row" for="hasMortgageToggle">
+        <input type="checkbox" id="hasMortgageToggle">
+        <span>Property has a mortgage</span>
+      </label>
+
+      <div id="mortgageSection" class="collapsible">
+        <div class="field-row">
+          <div class="field">
+            <label>Mortgage Company</label>
+            <input type="text" id="mortgage_company" placeholder="e.g. Wells Fargo">
+          </div>
+          <div class="field">
+            <label>Loan Number</label>
+            <input type="text" id="loan_number" placeholder="e.g. WF-9876543">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Co-Borrower Name</label>
+          <input type="text" id="coborrower_name" placeholder="Leave blank if none">
+          <p class="hint">Only if different from Client 2 above.</p>
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="submit-btn">Generate Contract Data &rarr;</button>
+
+  </form>
+</div>
+
+<script>
+  // Toggle sections
+  document.getElementById("hasClient2Toggle").addEventListener("change", function () {
+    document.getElementById("client2Section").classList.toggle("visible", this.checked);
+    if (!this.checked) document.getElementById("client2_name").value = "";
+  });
+
+  document.getElementById("hasMortgageToggle").addEventListener("change", function () {
+    document.getElementById("mortgageSection").classList.toggle("visible", this.checked);
+    if (!this.checked) {
+      ["mortgage_company", "loan_number", "coborrower_name"].forEach(id => {
+        document.getElementById(id).value = "";
+      });
+    }
+  });
+
+  // Form submit
+  document.getElementById("intakeForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const errorBanner = document.getElementById("errorBanner");
+    const successBanner = document.getElementById("successBanner");
+    errorBanner.style.display = "none";
+    successBanner.style.display = "none";
+
+    // Clear previous error styles
+    document.querySelectorAll("input.error").forEach(el => el.classList.remove("error"));
+
+    const required = ["client1_name", "property_address", "date_of_loss", "insurance_company", "policy_number"];
+    const missing = required.filter(id => !document.getElementById(id).value.trim());
+
+    if (missing.length > 0) {
+      missing.forEach(id => document.getElementById(id).classList.add("error"));
+      errorBanner.textContent = "Please fill in all required fields (highlighted in red).";
+      errorBanner.style.display = "block";
+      document.getElementById(missing[0]).focus();
+      return;
+    }
+
+    const hasMortgage = document.getElementById("hasMortgageToggle").checked;
+
+    const data = {
+      client1_name:       document.getElementById("client1_name").value.trim(),
+      client2_name:       document.getElementById("client2_name").value.trim(),
+      property_address:   document.getElementById("property_address").value.trim(),
+      date_of_loss:       document.getElementById("date_of_loss").value,
+      insurance_company:  document.getElementById("insurance_company").value.trim(),
+      policy_number:      document.getElementById("policy_number").value.trim(),
+      has_mortgage:       hasMortgage,
+      mortgage_company:   hasMortgage ? document.getElementById("mortgage_company").value.trim() : "",
+      loan_number:        hasMortgage ? document.getElementById("loan_number").value.trim() : "",
+      coborrower_name:    hasMortgage ? document.getElementById("coborrower_name").value.trim() : "",
+    };
+
+    // Download as JSON
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = data.client1_name.replace(/[^a-zA-Z0-9]/g, "_");
+    a.href = url;
+    a.download = `client_intake_${safeName}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    successBanner.textContent = `✓ Saved as client_intake_${safeName}.json — move it to .tmp/ then run fill_contract_pdf.py`;
+    successBanner.style.display = "block";
+  });
+</script>
+</body>
+</html>
