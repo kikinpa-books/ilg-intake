@@ -1,11 +1,13 @@
 import io
 import os
-from datetime import date
+import zipfile
+from datetime import date, datetime
 from pathlib import Path
 
 from flask import Flask, render_template, request, send_file
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
 import pypdf
 
 app = Flask(__name__)
@@ -98,7 +100,7 @@ def build_overlay(page_index: int, data: dict) -> bytes | None:
     return buf.getvalue() if drew_anything else None
 
 
-def fill_pdf(data: dict) -> bytes:
+def fill_contract_pdf(data: dict) -> io.BytesIO:
     reader = pypdf.PdfReader(str(TEMPLATE_PDF))
     writer = pypdf.PdfWriter()
 
@@ -115,6 +117,135 @@ def fill_pdf(data: dict) -> bytes:
     return out
 
 
+def build_notes_pdf(data: dict) -> io.BytesIO:
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    W, H = letter
+
+    MARGIN = 60
+    y = H - 60
+
+    def draw_header():
+        nonlocal y
+        # Header bar
+        c.setFillColor(colors.HexColor("#003087"))
+        c.rect(MARGIN, y - 10, W - 2 * MARGIN, 36, fill=1, stroke=0)
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 15)
+        c.drawString(MARGIN + 12, y + 8, "ILG — Client Intake Questionnaire")
+        y -= 10
+
+        # Subheader
+        c.setFillColor(colors.HexColor("#003087"))
+        c.setFont("Helvetica", 9)
+        c.setFillColor(colors.HexColor("#555555"))
+
+        client_names = data["client1_name"]
+        if data.get("client2_name"):
+            client_names += " and " + data["client2_name"]
+
+        raw_date = data.get("date_of_loss", "")
+        try:
+            display_date = date.fromisoformat(raw_date).strftime("%m/%d/%Y")
+        except ValueError:
+            display_date = raw_date
+
+        c.drawString(MARGIN, y - 22, f"Client: {client_names}")
+        c.drawString(MARGIN, y - 34, f"Property: {data.get('property_address', '')}")
+        c.drawString(MARGIN + 300, y - 22, f"Date of Loss: {display_date}")
+        c.drawString(MARGIN + 300, y - 34, f"Prepared: {datetime.now().strftime('%m/%d/%Y')}")
+        y -= 55
+        # Divider
+        c.setStrokeColor(colors.HexColor("#003087"))
+        c.setLineWidth(1.5)
+        c.line(MARGIN, y, W - MARGIN, y)
+        y -= 18
+
+    def draw_qa(question, answer, note=None):
+        nonlocal y, c
+        if y < 100:
+            c.showPage()
+            y = H - 60
+            c.setStrokeColor(colors.HexColor("#003087"))
+            c.setLineWidth(0.5)
+            c.line(MARGIN, H - 55, W - MARGIN, H - 55)
+            y = H - 70
+
+        # Question
+        c.setFont("Helvetica-Bold", 10)
+        c.setFillColor(colors.HexColor("#1a1a2e"))
+        c.drawString(MARGIN, y, question)
+        y -= 15
+
+        # Answer
+        c.setFont("Helvetica", 10)
+        ans_color = colors.HexColor("#1a7a4a") if answer.lower() in ("yes", "no") else colors.HexColor("#1a1a2e")
+        c.setFillColor(ans_color)
+        c.drawString(MARGIN + 12, y, answer)
+        y -= 12
+
+        # Optional note
+        if note:
+            c.setFont("Helvetica-Oblique", 9)
+            c.setFillColor(colors.HexColor("#555555"))
+            # Wrap long notes
+            max_w = W - 2 * MARGIN - 24
+            words = note.split()
+            line = ""
+            for word in words:
+                test = (line + " " + word).strip()
+                if c.stringWidth(test, "Helvetica-Oblique", 9) < max_w:
+                    line = test
+                else:
+                    c.drawString(MARGIN + 24, y, line)
+                    y -= 12
+                    line = word
+            if line:
+                c.drawString(MARGIN + 24, y, line)
+                y -= 12
+
+        # Light separator
+        c.setStrokeColor(colors.HexColor("#e8edf5"))
+        c.setLineWidth(0.5)
+        c.line(MARGIN, y, W - MARGIN, y)
+        y -= 10
+
+    draw_header()
+
+    yn = lambda key: "Yes" if data.get(key) == "yes" else "No"
+
+    draw_qa("Did this incident cause property damage?", yn("property_damage"))
+
+    claim_ans = yn("claim_number_assigned")
+    claim_note = f"Claim #: {data.get('claim_number', '')}" if data.get("claim_number_assigned") == "yes" and data.get("claim_number") else None
+    draw_qa("Have you been assigned a claim number?", claim_ans, claim_note)
+
+    draw_qa("Incident address same as policyholder's address?", yn("same_address"))
+    draw_qa("Do you plan on selling this property in the next year?", yn("selling_next_year"))
+    draw_qa("Tenants in the property?", yn("tenants"))
+
+    mortgage_ans = yn("has_mortgage_q")
+    mortgage_note = f"Mortgage Company: {data.get('mortgage_company', '')}" if data.get("has_mortgage_q") == "yes" and data.get("mortgage_company") else None
+    draw_qa("Mortgage on the property?", mortgage_ans, mortgage_note)
+
+    description = data.get("description", "").strip()
+    draw_qa("Client's description of what happened:", description or "—")
+
+    draw_qa("Contents damage?", yn("contents_damage"))
+    draw_qa("Additional Living Expenses or Loss of Rent?", yn("ale_loss_of_rent"))
+
+    repairs_ans = yn("repairs_performed")
+    repairs_note = data.get("repairs_details", "").strip() or None
+    draw_qa("Repairs performed?", repairs_ans, repairs_note)
+
+    draw_qa("Prior claims?", yn("prior_claims"))
+    draw_qa("HOA?", yn("hoa"))
+
+    c.save()
+    buf.seek(0)
+    return buf
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -123,26 +254,50 @@ def index():
 @app.route("/generate", methods=["POST"])
 def generate():
     data = {
-        "client1_name":     request.form.get("client1_name", "").strip(),
-        "client2_name":     request.form.get("client2_name", "").strip(),
-        "property_address": request.form.get("property_address", "").strip(),
-        "date_of_loss":     request.form.get("date_of_loss", "").strip(),
-        "insurance_company":request.form.get("insurance_company", "").strip(),
-        "policy_number":    request.form.get("policy_number", "").strip(),
-        "has_mortgage":     request.form.get("has_mortgage") == "on",
-        "mortgage_company": request.form.get("mortgage_company", "").strip(),
-        "loan_number":      request.form.get("loan_number", "").strip(),
-        "coborrower_name":  request.form.get("coborrower_name", "").strip(),
+        # Contract fields
+        "client1_name":          request.form.get("client1_name", "").strip(),
+        "client2_name":          request.form.get("client2_name", "").strip(),
+        "property_address":      request.form.get("property_address", "").strip(),
+        "date_of_loss":          request.form.get("date_of_loss", "").strip(),
+        "insurance_company":     request.form.get("insurance_company", "").strip(),
+        "policy_number":         request.form.get("policy_number", "").strip(),
+        "has_mortgage":          request.form.get("has_mortgage_q") == "yes",
+        "mortgage_company":      request.form.get("mortgage_company", "").strip(),
+        "loan_number":           request.form.get("loan_number", "").strip(),
+        "coborrower_name":       request.form.get("coborrower_name", "").strip(),
+        # Questionnaire fields
+        "property_damage":       request.form.get("property_damage", ""),
+        "claim_number_assigned": request.form.get("claim_number_assigned", ""),
+        "claim_number":          request.form.get("claim_number", "").strip(),
+        "same_address":          request.form.get("same_address", ""),
+        "selling_next_year":     request.form.get("selling_next_year", ""),
+        "tenants":               request.form.get("tenants", ""),
+        "has_mortgage_q":        request.form.get("has_mortgage_q", ""),
+        "description":           request.form.get("description", "").strip(),
+        "contents_damage":       request.form.get("contents_damage", ""),
+        "ale_loss_of_rent":      request.form.get("ale_loss_of_rent", ""),
+        "repairs_performed":     request.form.get("repairs_performed", ""),
+        "repairs_details":       request.form.get("repairs_details", "").strip(),
+        "prior_claims":          request.form.get("prior_claims", ""),
+        "hoa":                   request.form.get("hoa", ""),
     }
 
-    pdf_buf = fill_pdf(data)
+    contract_pdf = fill_contract_pdf(data)
+    notes_pdf = build_notes_pdf(data)
+
     safe_name = data["client1_name"].replace(" ", "_").replace("/", "-")
 
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{safe_name}_retainer.pdf", contract_pdf.read())
+        zf.writestr(f"{safe_name}_intake_notes.pdf", notes_pdf.read())
+    zip_buf.seek(0)
+
     return send_file(
-        pdf_buf,
-        mimetype="application/pdf",
+        zip_buf,
+        mimetype="application/zip",
         as_attachment=True,
-        download_name=f"{safe_name}_retainer.pdf",
+        download_name=f"{safe_name}_ILG_intake.zip",
     )
 
 
