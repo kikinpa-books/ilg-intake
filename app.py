@@ -13,6 +13,8 @@ import pypdf
 app = Flask(__name__)
 
 TEMPLATE_PDF = Path(__file__).parent / "template.pdf"
+ILG_LOGO   = Path(__file__).parent / "ilg_logo.png"
+TPLG_LOGO  = Path(__file__).parent / "tplg_logo.png"
 FONT = "Helvetica"
 FONT_SIZE = 10
 
@@ -127,16 +129,21 @@ def build_notes_pdf(data: dict) -> io.BytesIO:
 
     def draw_header():
         nonlocal y
-        # Header bar
+        # Logos — ILG left, TPLG right
+        ilg_h, ilg_w = 40, int(40 * 228 / 157)   # ~58pt wide
+        tplg_h, tplg_w = 40, int(40 * 266 / 81)  # ~131pt wide
+        logo_y = y - ilg_h + 8
+        c.drawImage(str(ILG_LOGO),  MARGIN, logo_y, width=ilg_w,  height=ilg_h,  mask='auto')
+        c.drawImage(str(TPLG_LOGO), W - MARGIN - tplg_w, logo_y + 4, width=tplg_w, height=tplg_h - 8, mask='auto')
+        y -= ilg_h + 6
+
+        # Title
         c.setFillColor(colors.HexColor("#003087"))
-        c.rect(MARGIN, y - 10, W - 2 * MARGIN, 36, fill=1, stroke=0)
-        c.setFillColor(colors.white)
-        c.setFont("Helvetica-Bold", 15)
-        c.drawString(MARGIN + 12, y + 8, "ILG — Client Intake Questionnaire")
-        y -= 10
+        c.setFont("Helvetica-Bold", 13)
+        c.drawCentredString(W / 2, y, "Client Intake Questionnaire")
+        y -= 18
 
         # Subheader
-        c.setFillColor(colors.HexColor("#003087"))
         c.setFont("Helvetica", 9)
         c.setFillColor(colors.HexColor("#555555"))
 
