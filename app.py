@@ -217,6 +217,61 @@ def build_notes_pdf(data: dict) -> io.BytesIO:
         c.line(MARGIN, y, W - MARGIN, y)
         y -= 10
 
+    def draw_description(question, text):
+        """Draw a question with fully wrapped multi-paragraph body text."""
+        nonlocal y, c
+        if y < 100:
+            c.showPage()
+            y = H - 60
+            c.setStrokeColor(colors.HexColor("#003087"))
+            c.setLineWidth(0.5)
+            c.line(MARGIN, H - 55, W - MARGIN, H - 55)
+            y = H - 70
+
+        # Question label
+        c.setFont("Helvetica-Bold", 10)
+        c.setFillColor(colors.HexColor("#1a1a2e"))
+        c.drawString(MARGIN, y, question)
+        y -= 15
+
+        max_w = W - 2 * MARGIN - 12
+        c.setFont("Helvetica", 10)
+        c.setFillColor(colors.HexColor("#1a1a2e"))
+
+        for paragraph in (text or "—").split("\n"):
+            words = paragraph.split()
+            if not words:
+                y -= 8
+                continue
+            line = ""
+            for word in words:
+                test = (line + " " + word).strip()
+                if c.stringWidth(test, "Helvetica", 10) <= max_w:
+                    line = test
+                else:
+                    if y < 80:
+                        c.showPage()
+                        y = H - 60
+                        c.setFont("Helvetica", 10)
+                        c.setFillColor(colors.HexColor("#1a1a2e"))
+                    c.drawString(MARGIN + 12, y, line)
+                    y -= 14
+                    line = word
+            if line:
+                if y < 80:
+                    c.showPage()
+                    y = H - 60
+                    c.setFont("Helvetica", 10)
+                    c.setFillColor(colors.HexColor("#1a1a2e"))
+                c.drawString(MARGIN + 12, y, line)
+                y -= 14
+            y -= 4  # paragraph gap
+
+        c.setStrokeColor(colors.HexColor("#e8edf5"))
+        c.setLineWidth(0.5)
+        c.line(MARGIN, y, W - MARGIN, y)
+        y -= 10
+
     draw_header()
 
     yn = lambda key: "Yes" if data.get(key) == "yes" else "No"
@@ -236,7 +291,7 @@ def build_notes_pdf(data: dict) -> io.BytesIO:
     draw_qa("Mortgage on the property?", mortgage_ans, mortgage_note)
 
     description = data.get("description", "").strip()
-    draw_qa("Client's description of what happened:", description or "—")
+    draw_description("Client's description of what happened:", description)
 
     draw_qa("Contents damage?", yn("contents_damage"))
     draw_qa("Additional Living Expenses or Loss of Rent?", yn("ale_loss_of_rent"))
