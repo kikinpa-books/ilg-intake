@@ -159,9 +159,12 @@ def build_notes_pdf(data: dict) -> io.BytesIO:
 
         c.drawString(MARGIN, y - 22, f"Client: {client_names}")
         c.drawString(MARGIN, y - 34, f"Property: {data.get('property_address', '')}")
+        phone = data.get('phone_number', '')
+        if phone:
+            c.drawString(MARGIN, y - 46, f"Phone: {phone}")
         c.drawString(MARGIN + 300, y - 22, f"Date of Loss: {display_date}")
         c.drawString(MARGIN + 300, y - 34, f"Prepared: {datetime.now().strftime('%m/%d/%Y')}")
-        y -= 55
+        y -= 65
         # Divider
         c.setStrokeColor(colors.HexColor("#003087"))
         c.setLineWidth(1.5)
@@ -325,6 +328,7 @@ def generate():
         # Contract fields
         "client1_name":          request.form.get("client1_name", "").strip(),
         "client2_name":          request.form.get("client2_name", "").strip(),
+        "phone_number":          request.form.get("phone_number", "").strip(),
         "property_address":      request.form.get("property_address", "").strip(),
         "date_of_loss":          request.form.get("date_of_loss", "").strip(),
         "insurance_company":     request.form.get("insurance_company", "").strip(),
