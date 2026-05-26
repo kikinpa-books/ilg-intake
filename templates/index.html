@@ -415,16 +415,31 @@
       </div>
 
       <!-- HOA -->
-      <div class="q-row">
+      <div class="q-row" style="flex-wrap:wrap;">
         <div class="q-label">HOA?</div>
         <div class="q-controls">
           <div class="yn-group">
-            <label><input type="radio" name="hoa" value="yes"><span>Yes</span></label>
+            <label><input type="radio" name="hoa" value="yes" id="hoaYes"><span>Yes</span></label>
             <label><input type="radio" name="hoa" value="no"><span>No</span></label>
+          </div>
+        </div>
+        <div class="q-extra collapsible" id="hoaFields" style="width:100%">
+          <div class="field" style="margin-top:8px;">
+            <label class="field-label">HOA Name</label>
+            <input type="text" name="hoa_name" placeholder="e.g. Lakeside Community HOA">
           </div>
         </div>
       </div>
 
+    </div>
+
+    <!-- ── REFERRAL ── -->
+    <div class="card">
+      <div class="card-title">Referral</div>
+      <div class="field">
+        <label class="field-label">Referred By</label>
+        <input type="text" name="referred_by" placeholder="Name of referral partner">
+      </div>
     </div>
 
     <button type="submit" class="submit-btn" id="submitBtn">Generate &amp; Download Both PDFs →</button>
@@ -457,6 +472,13 @@
   document.querySelectorAll("input[name='repairs_performed']").forEach(r => {
     r.addEventListener("change", () => {
       document.getElementById("repairsDetails").classList.toggle("visible", document.getElementById("repairsYes").checked);
+    });
+  });
+
+  // HOA name reveal
+  document.querySelectorAll("input[name='hoa']").forEach(r => {
+    r.addEventListener("change", () => {
+      document.getElementById("hoaFields").classList.toggle("visible", document.getElementById("hoaYes").checked);
     });
   });
 

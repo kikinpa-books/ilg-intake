@@ -301,7 +301,13 @@ def build_notes_pdf(data: dict) -> io.BytesIO:
     draw_qa("Repairs performed?", repairs_ans, repairs_note)
 
     draw_qa("Prior claims?", yn("prior_claims"))
-    draw_qa("HOA?", yn("hoa"))
+
+    hoa_ans = yn("hoa")
+    hoa_note = f"HOA Name: {data.get('hoa_name', '')}" if data.get("hoa") == "yes" and data.get("hoa_name") else None
+    draw_qa("HOA?", hoa_ans, hoa_note)
+
+    if data.get("referred_by"):
+        draw_qa("Referred By:", data["referred_by"])
 
     c.save()
     buf.seek(0)
@@ -342,6 +348,8 @@ def generate():
         "repairs_details":       request.form.get("repairs_details", "").strip(),
         "prior_claims":          request.form.get("prior_claims", ""),
         "hoa":                   request.form.get("hoa", ""),
+        "hoa_name":              request.form.get("hoa_name", "").strip(),
+        "referred_by":           request.form.get("referred_by", "").strip(),
     }
 
     contract_pdf = fill_contract_pdf(data)
