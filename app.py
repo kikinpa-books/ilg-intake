@@ -1,18 +1,161 @@
+import base64
+import email.mime.text
 import io
 import os
+import sys
+import threading
 import zipfile
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
+from functools import wraps
 from pathlib import Path
 
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, redirect, url_for, session
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 import pypdf
+from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-in-prod")
 
-TEMPLATE_PDF = Path(__file__).parent / "template.pdf"
+SHEET_ID      = os.environ.get("INTAKE_SHEET_ID", "1ScLykRKFd84Ndn8VZDpvEaMaoxMtqdLUmXpOA5yOTxw")
+REPORT_EMAIL  = "jlinan@thelinangroup.com"
+EASTERN       = timezone(timedelta(hours=-4))  # ET (EDT); adjust to -5 in winter
+
+# Drive folder ID where intake PDFs are uploaded (set DRIVE_FOLDER_ID in .env).
+# If unset, files land in the root of My Drive.
+DRIVE_FOLDER_ID = os.environ.get("DRIVE_FOLDER_ID", "")
+
+# Allowed users loaded from env vars: USERNAME_JANIA, PASSWORD_JANIA, etc.
+USERS = {}
+for _name in ["JANIA", "NICOLE", "JOSE"]:
+    _user = os.environ.get(f"USERNAME_{_name}")
+    _pass = os.environ.get(f"PASSWORD_{_name}")
+    if _user and _pass:
+        USERS[_user] = _pass
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("user"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def upload_to_drive(safe_name: str, retainer_bytes: bytes, notes_bytes: bytes) -> None:
+    """Upload both intake PDFs to Google Drive. Runs in a background thread."""
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from tools.google_auth import drive_service
+        from googleapiclient.http import MediaIoBaseUpload
+
+        svc = drive_service()
+
+        def _upload(filename: str, data: bytes) -> str:
+            meta = {"name": filename}
+            if DRIVE_FOLDER_ID:
+                meta["parents"] = [DRIVE_FOLDER_ID]
+            media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/pdf")
+            f = svc.files().create(body=meta, media_body=media, fields="id").execute()
+            return f.get("id", "")
+
+        retainer_id = _upload(f"{safe_name}_retainer.pdf", retainer_bytes)
+        notes_id    = _upload(f"{safe_name}_intake_notes.pdf", notes_bytes)
+        print(f"Drive upload OK — retainer={retainer_id} notes={notes_id}", flush=True)
+
+    except Exception as exc:
+        print(f"Drive upload failed (non-fatal): {exc}", file=sys.stderr, flush=True)
+
+
+def log_to_sheets(data: dict, username: str) -> None:
+    """Append one row to the ILG Client Intake Log sheet. Runs in a background thread."""
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from tools.google_auth import sheets_service
+        svc = sheets_service()
+        row = [[
+            datetime.now(EASTERN).strftime("%Y-%m-%d %H:%M:%S"),
+            username,
+            data.get("client1_name", ""),
+            data.get("client2_name", ""),
+            data.get("phone_number", ""),
+            data.get("property_address", ""),
+            data.get("date_of_loss", ""),
+            data.get("insurance_company", ""),
+            data.get("policy_number", ""),
+            data.get("referred_by", ""),
+        ]]
+        svc.spreadsheets().values().append(
+            spreadsheetId=SHEET_ID,
+            range="Intakes!A1",
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": row},
+        ).execute()
+        print(f"Sheets log OK — {data.get('client1_name')} by {username}", flush=True)
+    except Exception as exc:
+        print(f"Sheets log failed (non-fatal): {exc}", file=sys.stderr, flush=True)
+
+
+def send_daily_report() -> None:
+    """Read today's intakes from Sheets and email a summary. Called by scheduler at 8 PM ET."""
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from tools.google_auth import sheets_service, get_credentials
+        from googleapiclient.discovery import build
+
+        today = datetime.now(EASTERN).strftime("%Y-%m-%d")
+        svc = sheets_service()
+        result = svc.spreadsheets().values().get(
+            spreadsheetId=SHEET_ID,
+            range="Intakes!A2:J",
+        ).execute()
+        rows = result.get("values", [])
+
+        today_rows = [r for r in rows if r and r[0].startswith(today)]
+
+        if not today_rows:
+            body_text = f"No intakes were created on {today}."
+        else:
+            by_user: dict[str, list[str]] = {}
+            for r in today_rows:
+                user    = r[1] if len(r) > 1 else "unknown"
+                client  = r[2] if len(r) > 2 else "—"
+                client2 = r[3] if len(r) > 3 else ""
+                name    = f"{client} & {client2}" if client2 else client
+                by_user.setdefault(user, []).append(name)
+
+            lines = [f"Daily Intake Report — {today}\n", f"Total intakes: {len(today_rows)}\n"]
+            for user, clients in sorted(by_user.items()):
+                lines.append(f"\n{user.capitalize()} ({len(clients)}):")
+                for c in clients:
+                    lines.append(f"  • {c}")
+            body_text = "\n".join(lines)
+
+        msg = email.mime.text.MIMEText(body_text)
+        msg["To"]      = REPORT_EMAIL
+        msg["From"]    = "me"
+        msg["Subject"] = f"ILG Intake Report — {today}"
+
+        creds = get_credentials()
+        gmail = build("gmail", "v1", credentials=creds)
+        raw   = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        gmail.users().messages().send(userId="me", body={"raw": raw}).execute()
+        print(f"Daily report sent to {REPORT_EMAIL}", flush=True)
+    except Exception as exc:
+        print(f"Daily report failed: {exc}", file=sys.stderr, flush=True)
+
+
+# Schedule daily report at 8 PM Eastern
+_scheduler = BackgroundScheduler(timezone="America/New_York")
+_scheduler.add_job(send_daily_report, "cron", hour=20, minute=0)
+_scheduler.start()
+
+
+TEMPLATE_PDF = Path(__file__).parent / "ILG PLG 2033 Retainer (v 3-26-2026).pdf"
 ILG_LOGO   = Path(__file__).parent / "ilg_logo.png"
 TPLG_LOGO  = Path(__file__).parent / "tplg_logo.png"
 FONT = "Helvetica"
@@ -317,12 +460,35 @@ def build_notes_pdf(data: dict) -> io.BytesIO:
     return buf
 
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("user"):
+        return redirect(url_for("index"))
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        if USERS.get(username) == password:
+            session["user"] = username
+            return redirect(url_for("index"))
+        error = "Invalid username or password."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
 
 @app.route("/generate", methods=["POST"])
+@login_required
 def generate():
     data = {
         # Contract fields
@@ -356,16 +522,28 @@ def generate():
         "referred_by":           request.form.get("referred_by", "").strip(),
     }
 
-    contract_pdf = fill_contract_pdf(data)
-    notes_pdf = build_notes_pdf(data)
+    contract_bytes = fill_contract_pdf(data).read()
+    notes_bytes    = build_notes_pdf(data).read()
 
     safe_name = data["client1_name"].replace(" ", "_").replace("/", "-")
 
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"{safe_name}_retainer.pdf", contract_pdf.read())
-        zf.writestr(f"{safe_name}_intake_notes.pdf", notes_pdf.read())
+        zf.writestr(f"{safe_name}_retainer.pdf", contract_bytes)
+        zf.writestr(f"{safe_name}_intake_notes.pdf", notes_bytes)
     zip_buf.seek(0)
+
+    current_user = session.get("user", "unknown")
+    threading.Thread(
+        target=upload_to_drive,
+        args=(safe_name, contract_bytes, notes_bytes),
+        daemon=True,
+    ).start()
+    threading.Thread(
+        target=log_to_sheets,
+        args=(data, current_user),
+        daemon=True,
+    ).start()
 
     return send_file(
         zip_buf,
