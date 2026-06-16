@@ -80,7 +80,9 @@ def log_to_sheets(data: dict, username: str) -> None:
             datetime.now(EASTERN).strftime("%Y-%m-%d %H:%M:%S"),
             username,
             data.get("client1_name", ""),
+            data.get("client1_email", ""),
             data.get("client2_name", ""),
+            data.get("client2_email", ""),
             data.get("phone_number", ""),
             data.get("property_address", ""),
             data.get("date_of_loss", ""),
@@ -303,11 +305,21 @@ def build_notes_pdf(data: dict) -> io.BytesIO:
         c.drawString(MARGIN, y - 22, f"Client: {client_names}")
         c.drawString(MARGIN, y - 34, f"Property: {data.get('property_address', '')}")
         phone = data.get('phone_number', '')
+        email1 = data.get('client1_email', '')
+        email2 = data.get('client2_email', '')
+        offset = -46
         if phone:
-            c.drawString(MARGIN, y - 46, f"Phone: {phone}")
+            c.drawString(MARGIN, y + offset, f"Phone: {phone}")
+            offset -= 12
+        if email1:
+            label = f"Email: {email1}"
+            if email2:
+                label += f"  |  {email2}"
+            c.drawString(MARGIN, y + offset, label)
+            offset -= 12
         c.drawString(MARGIN + 300, y - 22, f"Date of Loss: {display_date}")
         c.drawString(MARGIN + 300, y - 34, f"Prepared: {datetime.now().strftime('%m/%d/%Y')}")
-        y -= 65
+        y -= (65 + max(0, (-offset - 46)))
         # Divider
         c.setStrokeColor(colors.HexColor("#003087"))
         c.setLineWidth(1.5)
@@ -493,7 +505,9 @@ def generate():
     data = {
         # Contract fields
         "client1_name":          request.form.get("client1_name", "").strip(),
+        "client1_email":         request.form.get("client1_email", "").strip(),
         "client2_name":          request.form.get("client2_name", "").strip(),
+        "client2_email":         request.form.get("client2_email", "").strip(),
         "phone_number":          request.form.get("phone_number", "").strip(),
         "property_address":      request.form.get("property_address", "").strip(),
         "date_of_loss":          request.form.get("date_of_loss", "").strip(),
