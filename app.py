@@ -547,6 +547,9 @@ def generate():
         "referred_by":           request.form.get("referred_by", "").strip(),
     }
 
+    current_user = session.get("user", "unknown")
+    data["prepared_by"] = PREPARER_NAMES.get(current_user, current_user.capitalize())
+
     contract_bytes = fill_contract_pdf(data).read()
     notes_bytes    = build_notes_pdf(data).read()
 
@@ -557,9 +560,6 @@ def generate():
         zf.writestr(f"{safe_name}_retainer.pdf", contract_bytes)
         zf.writestr(f"{safe_name}_intake_notes.pdf", notes_bytes)
     zip_buf.seek(0)
-
-    current_user = session.get("user", "unknown")
-    data["prepared_by"] = PREPARER_NAMES.get(current_user, current_user.capitalize())
     threading.Thread(
         target=upload_to_drive,
         args=(safe_name, contract_bytes, notes_bytes),
