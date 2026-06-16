@@ -27,6 +27,12 @@ EASTERN       = timezone(timedelta(hours=-4))  # ET (EDT); adjust to -5 in winte
 # If unset, files land in the root of My Drive.
 DRIVE_FOLDER_ID = os.environ.get("DRIVE_FOLDER_ID", "")
 
+PREPARER_NAMES = {
+    "jania": "Jania",
+    "nicole": "Nicole",
+    "jose": "Jose Linan",
+}
+
 # Allowed users loaded from env vars: USERNAME_JANIA, PASSWORD_JANIA, etc.
 USERS = {}
 for _name in ["JANIA", "NICOLE", "JOSE"]:
@@ -319,6 +325,9 @@ def build_notes_pdf(data: dict) -> io.BytesIO:
             offset -= 12
         c.drawString(MARGIN + 300, y - 22, f"Date of Loss: {display_date}")
         c.drawString(MARGIN + 300, y - 34, f"Prepared: {datetime.now().strftime('%m/%d/%Y')}")
+        preparer = data.get("prepared_by", "")
+        if preparer:
+            c.drawString(MARGIN + 300, y - 46, f"Prepared by: {preparer}")
         y -= (65 + max(0, (-offset - 46)))
         # Divider
         c.setStrokeColor(colors.HexColor("#003087"))
@@ -458,7 +467,8 @@ def build_notes_pdf(data: dict) -> io.BytesIO:
     repairs_note = data.get("repairs_details", "").strip() or None
     draw_qa("Repairs performed?", repairs_ans, repairs_note)
 
-    draw_qa("Prior claims?", yn("prior_claims"))
+    prior_note = data.get("prior_claims_details", "").strip() or None
+    draw_qa("Prior claims?", yn("prior_claims"), prior_note)
 
     hoa_ans = yn("hoa")
     hoa_note = f"HOA Name: {data.get('hoa_name', '')}" if data.get("hoa") == "yes" and data.get("hoa_name") else None
@@ -531,6 +541,7 @@ def generate():
         "repairs_performed":     request.form.get("repairs_performed", ""),
         "repairs_details":       request.form.get("repairs_details", "").strip(),
         "prior_claims":          request.form.get("prior_claims", ""),
+        "prior_claims_details":  request.form.get("prior_claims_details", "").strip(),
         "hoa":                   request.form.get("hoa", ""),
         "hoa_name":              request.form.get("hoa_name", "").strip(),
         "referred_by":           request.form.get("referred_by", "").strip(),
@@ -548,6 +559,7 @@ def generate():
     zip_buf.seek(0)
 
     current_user = session.get("user", "unknown")
+    data["prepared_by"] = PREPARER_NAMES.get(current_user, current_user.capitalize())
     threading.Thread(
         target=upload_to_drive,
         args=(safe_name, contract_bytes, notes_bytes),

@@ -420,13 +420,16 @@
       </div>
 
       <!-- Prior claims -->
-      <div class="q-row">
+      <div class="q-row" style="flex-wrap:wrap;">
         <div class="q-label">Prior claims?</div>
         <div class="q-controls">
           <div class="yn-group">
-            <label><input type="radio" name="prior_claims" value="yes"><span>Yes</span></label>
+            <label><input type="radio" name="prior_claims" value="yes" id="priorClaimsYes"><span>Yes</span></label>
             <label><input type="radio" name="prior_claims" value="no"><span>No</span></label>
           </div>
+        </div>
+        <div class="q-extra collapsible" id="priorClaimsDetails" style="width:100%">
+          <input type="text" name="prior_claims_details" placeholder="Describe prior claims (type, year, outcome…)" style="margin-top:8px;">
         </div>
       </div>
 
@@ -491,6 +494,13 @@
   document.querySelectorAll("input[name='repairs_performed']").forEach(r => {
     r.addEventListener("change", () => {
       document.getElementById("repairsDetails").classList.toggle("visible", document.getElementById("repairsYes").checked);
+    });
+  });
+
+  // Prior claims detail reveal
+  document.querySelectorAll("input[name='prior_claims']").forEach(r => {
+    r.addEventListener("change", () => {
+      document.getElementById("priorClaimsDetails").classList.toggle("visible", document.getElementById("priorClaimsYes").checked);
     });
   });
 
